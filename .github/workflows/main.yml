@@ -1,0 +1,68 @@
+name: Build SA Learning Center APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Find Android project
+        run: |
+          set -e
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+          echo "ZIP_FILE=$ZIP_FILE"
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ZIP Android tidak ditemukan."
+            exit 1
+          fi
+
+          mkdir -p android-project
+          unzip -q "$ZIP_FILE" -d android-project
+
+          echo "Isi project:"
+          find android-project -maxdepth 3 -type f | head -100
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build APK
+        working-directory: android-project/sa-apk-wrapper
+        run: |
+          gradle assembleDebug --stacktrace
+
+      - name: Find APK
+        run: |
+          find android-project -type f -name "*.apk" -print
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SA-Learning-Center-APK
+          path: android-project/sa-apk-wrapper/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
