@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -20,49 +20,64 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Find Android project
-        run: |
-          set -e
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
-          echo "ZIP_FILE=$ZIP_FILE"
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ZIP Android tidak ditemukan."
-            exit 1
-          fi
-
-          mkdir -p android-project
-          unzip -q "$ZIP_FILE" -d android-project
-
-          echo "Isi project:"
-          find android-project -maxdepth 3 -type f | head -100
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
         run: |
+          yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Install Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+      - name: Extract Android Project ZIP
+        run: |
+          mkdir -p android-project
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: File ZIP Android Project tidak ditemukan."
+            exit 1
+          fi
+
+          echo "ZIP ditemukan: $ZIP_FILE"
+          unzip -q "$ZIP_FILE" -d android-project
+
+          echo "Isi android-project:"
+          find android-project -maxdepth 4 -type f | head -100
+
+      - name: Find Android project
+        run: |
+          PROJECT_DIR=$(find android-project -type f -name "gradlew" -print -quit | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: gradlew tidak ditemukan."
+            echo "Struktur folder:"
+            find android-project -maxdepth 5 -type f
+            exit 1
+          fi
+
+          echo "ANDROID_PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project ditemukan di: $PROJECT_DIR"
+
+      - name: Make Gradle executable
+        run: |
+          chmod +x "$ANDROID_PROJECT_DIR/gradlew"
 
       - name: Build APK
-        working-directory: android-project/sa-apk-wrapper
+        working-directory: ${{ env.ANDROID_PROJECT_DIR }}
         run: |
-          gradle assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace
 
       - name: Find APK
         run: |
-          find android-project -type f -name "*.apk" -print
+          echo "APK yang dihasilkan:"
+          find "$ANDROID_PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SA-Learning-Center-APK
-          path: android-project/sa-apk-wrapper/app/build/outputs/apk/**/*.apk
+          path: ${{ env.ANDROID_PROJECT_DIR }}/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
