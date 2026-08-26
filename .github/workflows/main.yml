@@ -39,29 +39,49 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Find Android Project ZIP
+        id: find-android-zip
+        shell: bash
+        run: |
+          ANDROID_ZIP=""
+
+          while IFS= read -r -d '' ZIP_FILE; do
+            echo "Memeriksa ZIP:"
+            echo "$ZIP_FILE"
+
+            if unzip -Z1 "$ZIP_FILE" 2>/dev/null | \
+              grep -qE '(^|/)gradlew$'; then
+
+              ANDROID_ZIP="$ZIP_FILE"
+              echo "ANDROID PROJECT ZIP DITEMUKAN:"
+              echo "$ANDROID_ZIP"
+              break
+            fi
+          done < <(find . -type f -name "*.zip" -print0)
+
+          if [ -z "$ANDROID_ZIP" ]; then
+            echo "ERROR: ZIP Android Project tidak ditemukan."
+            echo
+            echo "Daftar ZIP:"
+            find . -type f -name "*.zip" -print
+            exit 1
+          fi
+
+          echo "android_zip=$ANDROID_ZIP" >> "$GITHUB_OUTPUT"
+
       - name: Extract Android Project ZIP
         shell: bash
         run: |
           mkdir -p android-project
 
-          ZIP_FILE="$(find . -maxdepth 3 -type f \
-            \( -iname "*ANDROID_PROJECT*.zip" \
-            -o -iname "*GITHUB_READY*.zip" \
-            -o -iname "*.zip" \) \
-            -print -quit)"
+          ZIP_FILE="${{ steps.find-android-zip.outputs.android_zip }}"
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: File ZIP Android Project tidak ditemukan."
-            echo "File ZIP yang tersedia:"
-            find . -type f -name "*.zip" -print
-            exit 1
-          fi
-
-          echo "ZIP ditemukan:"
+          echo "Extract ZIP Android Project:"
           echo "$ZIP_FILE"
 
           unzip -q "$ZIP_FILE" -d android-project
 
+          echo
           echo "Isi hasil extract:"
           find android-project -maxdepth 5 -type f -print | sort
 
@@ -69,13 +89,19 @@ jobs:
         id: find-project
         shell: bash
         run: |
-          PROJECT_DIR="$(find android-project -type f -name "gradlew" -print -quit | xargs -r dirname)"
+          PROJECT_DIR=""
+
+          while IFS= read -r -d '' GRADLEW_FILE; do
+            PROJECT_DIR="$(dirname "$GRADLEW_FILE")"
+            break
+          done < <(find android-project -type f -name "gradlew" -print0)
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: gradlew tidak ditemukan."
 
+            echo
             echo "Struktur folder:"
-            find android-project -maxdepth 6 -type f -print | sort
+            find android-project -maxdepth 8 -type f -print | sort
 
             exit 1
           fi
@@ -90,10 +116,10 @@ jobs:
         working-directory: ${{ steps.find-project.outputs.project_dir }}
         run: |
           echo "=== PROJECT STRUCTURE ==="
-          find . -maxdepth 4 -type f -print | sort
+          find . -maxdepth 5 -type f -print | sort
 
           echo
-          echo "=== GRADLE FILES ==="
+          echo "=== ROOT PROJECT ==="
           ls -la
 
       - name: Make Gradle executable
@@ -123,27 +149,22 @@ jobs:
             echo "ERROR: app-debug.apk tidak ditemukan."
 
             echo
-            echo "=== SEMUA APK ==="
+            echo "Semua APK:"
             find "$PROJECT_DIR" \
               -type f \
               -name "*.apk" \
               -print || true
 
-            echo
-            echo "=== BUILD OUTPUT ==="
-            find "$PROJECT_DIR/app/build" \
-              -maxdepth 6 \
-              -type f \
-              -print 2>/dev/null || true
-
             exit 1
           fi
 
-          echo "APK ditemukan:"
+          echo "================================="
+          echo "APK DITEMUKAN"
+          echo "================================="
           echo "$APK_PATH"
 
           echo
-          echo "Ukuran APK:"
+          echo "UKURAN APK:"
           ls -lh "$APK_PATH"
 
           mkdir -p "$GITHUB_WORKSPACE/apk-output"
@@ -152,10 +173,12 @@ jobs:
             "$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
 
           echo
-          echo "APK siap di-upload:"
-          ls -lh "$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
+          echo "APK FINAL:"
+          ls -lh \
+            "$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
 
-          echo "apk_path=$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk" >> "$GITHUB_OUTPUT"
+          echo "apk_path=$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk" \
+            >> "$GITHUB_OUTPUT"
 
       - name: Verify APK
         shell: bash
@@ -163,15 +186,14 @@ jobs:
           APK="$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERROR: File APK tidak ada."
+            echo "ERROR: APK final tidak ditemukan."
             exit 1
           fi
 
-          echo "APK FINAL:"
+          echo "================================="
+          echo "VERIFIKASI APK BERHASIL"
+          echo "================================="
           ls -lh "$APK"
-
-          echo
-          echo "APK berhasil dibuat dan siap di-upload."
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
