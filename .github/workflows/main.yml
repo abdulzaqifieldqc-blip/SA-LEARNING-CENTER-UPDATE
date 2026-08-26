@@ -116,27 +116,27 @@ jobs:
           fi
 
       - name: Find APK
-        id: find-apk
-        working-directory: ${{ steps.find-project.outputs.project_dir }}
-        shell: bash
-        run: |
-          APK_PATH="$(find . \
-            -type f \
-            -name "*.apk" \
-            -print -quit)"
+  id: find-apk
+  working-directory: ${{ steps.find-project.outputs.project_dir }}
+  shell: bash
+  run: |
+    APK_PATH="$(find . \
+      -type f \
+      -name "*.apk" \
+      -print -quit)"
 
-          if [ -z "$APK_PATH" ]; then
-            echo "ERROR: APK tidak ditemukan."
-            echo ""
-            echo "File hasil build:"
-            find . -type f | grep -E 'build|apk' || true
-            exit 1
-          fi
+    if [ -z "$APK_PATH" ]; then
+      echo "ERROR: APK tidak ditemukan."
+      exit 1
+    fi
 
-          echo "APK ditemukan:"
-          echo "$APK_PATH"
+    # Hapus ./ di awal path
+    APK_PATH="${APK_PATH#./}"
 
-          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+    echo "APK ditemukan:"
+    echo "$APK_PATH"
+
+    echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
