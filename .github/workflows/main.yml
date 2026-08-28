@@ -1,10 +1,233 @@
--- Jalankan di Supabase > SQL Editor sebelum memakai versi HTML yang baru.
--- Aman dijalankan berulang kali karena memakai IF NOT EXISTS.
+name: Build SA Learning Center APK
 
-ALTER TABLE public.sa_users
-  ADD COLUMN IF NOT EXISTS area text,
-  ADD COLUMN IF NOT EXISTS join_date date,
-  ADD COLUMN IF NOT EXISTS vintage text;
+on:
+  workflow_dispatch:
 
--- Opsional: index untuk pencarian ID SA yang lebih cepat.
-CREATE INDEX IF NOT EXISTS idx_sa_users_id_sa ON public.sa_users (id_sa);
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Find Android Project ZIP
+        id: find-android-zip
+        shell: bash
+        run: |
+          ZIP_FILE="./SA_Learning_Center_ANDROID_PROJECT_GITHUB_READY.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP Android Project tidak ditemukan:"
+            echo "$ZIP_FILE"
+
+            echo
+            echo "ZIP yang tersedia:"
+            find . -type f -name "*.zip" -print
+
+            exit 1
+          fi
+
+          echo "======================================"
+          echo "ANDROID PROJECT ZIP DITEMUKAN"
+          echo "======================================"
+          echo "$ZIP_FILE"
+
+          echo "android_zip=$ZIP_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Android Project ZIP
+        shell: bash
+        run: |
+          rm -rf android-project
+          mkdir -p android-project
+
+          unzip -q \
+            "${{ steps.find-android-zip.outputs.android_zip }}" \
+            -d android-project
+
+          echo "======================================"
+          echo "HASIL EXTRACT"
+          echo "======================================"
+
+          find android-project -maxdepth 6 -type f -print | sort
+
+      - name: Find Android Project
+        id: find-project
+        shell: bash
+        run: |
+          PROJECT_DIR=""
+
+          while IFS= read -r -d '' SETTINGS_FILE; do
+
+            CANDIDATE_DIR="$(dirname "$SETTINGS_FILE")"
+
+            if [ -f "$CANDIDATE_DIR/app/build.gradle" ] || \
+               [ -f "$CANDIDATE_DIR/app/build.gradle.kts" ]; then
+
+              PROJECT_DIR="$CANDIDATE_DIR"
+              break
+
+            fi
+
+          done < <(
+            find android-project \
+              -type f \
+              \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+              -print0
+          )
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android project tidak ditemukan."
+
+            echo
+            echo "Struktur folder:"
+            find android-project \
+              -maxdepth 8 \
+              -print | sort
+
+            exit 1
+          fi
+
+          echo "======================================"
+          echo "ANDROID PROJECT DITEMUKAN"
+          echo "======================================"
+          echo "$PROJECT_DIR"
+
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Show Project Structure
+        shell: bash
+        working-directory: ${{ steps.find-project.outputs.project_dir }}
+        run: |
+          echo "======================================"
+          echo "PROJECT STRUCTURE"
+          echo "======================================"
+
+          find . -maxdepth 6 -type f -print | sort
+
+          echo
+          echo "======================================"
+          echo "ROOT PROJECT"
+          echo "======================================"
+
+          ls -la
+
+      - name: Build APK
+        shell: bash
+        working-directory: ${{ steps.find-project.outputs.project_dir }}
+        run: |
+          echo "======================================"
+          echo "BUILD APK"
+          echo "======================================"
+
+          gradle assembleDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Find APK
+        id: find-apk
+        shell: bash
+        run: |
+          PROJECT_DIR="${{ steps.find-project.outputs.project_dir }}"
+
+          APK_PATH="$(find "$PROJECT_DIR" \
+            -type f \
+            -name "app-debug.apk" \
+            -print -quit)"
+
+          if [ -z "$APK_PATH" ]; then
+
+            echo "ERROR: APK tidak ditemukan."
+
+            echo
+            echo "Semua file APK:"
+            find "$PROJECT_DIR" \
+              -type f \
+              -name "*.apk" \
+              -print || true
+
+            echo
+            echo "Isi folder build:"
+            find "$PROJECT_DIR/app/build" \
+              -maxdepth 6 \
+              -type f \
+              -print 2>/dev/null || true
+
+            exit 1
+          fi
+
+          echo "======================================"
+          echo "APK DITEMUKAN"
+          echo "======================================"
+
+          echo "$APK_PATH"
+
+          echo
+          echo "Ukuran APK:"
+          ls -lh "$APK_PATH"
+
+          mkdir -p "$GITHUB_WORKSPACE/apk-output"
+
+          cp "$APK_PATH" \
+            "$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
+
+          echo
+          echo "APK FINAL:"
+          ls -lh \
+            "$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
+
+          echo "apk_path=$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          APK="$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK final tidak ditemukan."
+            exit 1
+          fi
+
+          echo "======================================"
+          echo "VERIFIKASI APK BERHASIL"
+          echo "======================================"
+
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SA-Learning-Center-APK
+          path: ${{ steps.find-apk.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 7
