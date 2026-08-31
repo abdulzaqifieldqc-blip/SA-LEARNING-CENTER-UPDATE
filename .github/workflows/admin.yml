@@ -34,42 +34,129 @@ jobs:
         with:
           gradle-version: "8.7"
 
+      - name: Find Admin ZIP
+        id: zip
+        shell: bash
+        run: |
+          ZIP_FILE=$(find . -type f -iname "*.zip" \
+            -not -path "./admin-project/*" \
+            -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "File ZIP Admin Android tidak ditemukan."
+            exit 1
+          fi
+
+          echo "ZIP ditemukan: $ZIP_FILE"
+          echo "zip=$ZIP_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Extract Admin Android Project
         run: |
-            mkdir -p admin-project
-            ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
-            if [ -z "$ZIP_FILE" ]; then
-              echo "File ZIP Admin Android tidak ditemukan."
-              exit 1
-            fi
-            echo "ZIP ditemukan: $ZIP_FILE"
-            unzip -q "$ZIP_FILE" -d admin-project
-            
+          rm -rf admin-project
+          mkdir -p admin-project
+
+          unzip -q "${{ steps.zip.outputs.zip }}" -d admin-project
+
+          echo "Isi hasil extract:"
+          find admin-project -maxdepth 4 -type f | head -100
+
       - name: Find Admin Project
         id: project
         shell: bash
         run: |
-          PROJECT_DIR=$(find admin-project -type f -name "settings.gradle*" -print -quit | xargs -r dirname)
+          PROJECT_DIR=""
+
+          # Prioritas 1: settings.gradle / settings.gradle.kts
+          SETTINGS_FILE=$(find admin-project \
+            -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -print -quit)
+
+          if [ -n "$SETTINGS_FILE" ]; then
+            PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+          fi
+
+          # Prioritas 2: gradlew
+          if [ -z "$PROJECT_DIR" ]; then
+            GRADLEW_FILE=$(find admin-project \
+              -type f \
+              -name "gradlew" \
+              -print -quit)
+
+            if [ -n "$GRADLEW_FILE" ]; then
+              PROJECT_DIR=$(dirname "$GRADLEW_FILE")
+            fi
+          fi
+
+          # Prioritas 3: build.gradle / build.gradle.kts
+          if [ -z "$PROJECT_DIR" ]; then
+            BUILD_FILE=$(find admin-project \
+              -type f \
+              \( -name "build.gradle" -o -name "build.gradle.kts" \) \
+              -print -quit)
+
+            if [ -n "$BUILD_FILE" ]; then
+              PROJECT_DIR=$(dirname "$BUILD_FILE")
+            fi
+          fi
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "Admin Android project tidak ditemukan."
+            echo ""
+            echo "Struktur file yang ditemukan:"
+            find admin-project -maxdepth 5 -type f
             exit 1
           fi
 
+          echo "Admin project ditemukan:"
+          echo "$PROJECT_DIR"
+
           echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Admin project: $PROJECT_DIR"
+
+      - name: Check Android Project
+        working-directory: ${{ steps.project.outputs.dir }}
+        shell: bash
+        run: |
+          echo "Project directory:"
+          pwd
+
+          echo ""
+          echo "Project files:"
+          find . -maxdepth 3 -type f | sort | head -100
 
       - name: Build Admin APK
         working-directory: ${{ steps.project.outputs.dir }}
-        run: gradle assembleDebug --stacktrace --no-daemon
+        shell: bash
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace --no-daemon
+          else
+            gradle assembleDebug --stacktrace --no-daemon
+          fi
 
       - name: Prepare APK
         shell: bash
         run: |
-          APK=$(find "${{ steps.project.outputs.dir }}/app/build/outputs/apk" -type f -name "*.apk" | head -n 1)
+          APK=$(find "${{ steps.project.outputs.dir }}" \
+            -type f \
+            -path "*/build/outputs/apk/*.apk" \
+            -print -quit)
 
-          test -n "$APK"
+          if [ -z "$APK" ]; then
+            echo "APK tidak ditemukan setelah proses build."
+            echo ""
+            echo "File APK yang tersedia:"
+            find "${{ steps.project.outputs.dir }}" \
+              -type f \
+              -name "*.apk" \
+              -print
+            exit 1
+          fi
 
+          echo "APK ditemukan: $APK"
+
+          rm -rf apk-output
           mkdir -p apk-output
 
           cp "$APK" apk-output/SA-Learning-Center-Admin.apk
