@@ -36,9 +36,15 @@ jobs:
 
       - name: Extract Admin Android Project
         run: |
-          mkdir -p admin-project
-          unzip -q SA_Learning_Center_ADMIN_ANDROID_PROJECT_READY.zip -d admin-project
-
+            mkdir -p admin-project
+            ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+            if [ -z "$ZIP_FILE" ]; then
+              echo "File ZIP Admin Android tidak ditemukan."
+              exit 1
+            fi
+            echo "ZIP ditemukan: $ZIP_FILE"
+            unzip -q "$ZIP_FILE" -d admin-project
+            
       - name: Find Admin Project
         id: project
         shell: bash
