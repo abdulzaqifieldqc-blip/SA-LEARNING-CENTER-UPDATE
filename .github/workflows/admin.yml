@@ -12,338 +12,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Ambil isi repository
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Java 17
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # 3. Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 4. Install Android SDK yang diperlukan
       - name: Install Android SDK
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      # 5. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
 
-      # 6. Cari ZIP Admin dan ambil file HTML
-      - name: Extract Admin HTML
+      - name: Extract Admin Android Project
+        run: |
+          mkdir -p admin-project
+          unzip -q SA_Learning_Center_ADMIN_ANDROID_PROJECT_READY.zip -d admin-project
+
+      - name: Find Admin Project
+        id: project
         shell: bash
         run: |
-          set -e
+          PROJECT_DIR=$(find admin-project -type f -name "settings.gradle*" -print -quit | xargs -r dirname)
 
-          mkdir -p admin-source
-
-          echo "Mencari file ZIP Admin..."
-
-          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" | head -n 1)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: File ZIP Admin tidak ditemukan."
-            echo "File ZIP yang tersedia:"
-            find . -maxdepth 3 -type f -print
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Admin Android project tidak ditemukan."
             exit 1
           fi
 
-          echo "ZIP ditemukan: $ZIP_FILE"
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Admin project: $PROJECT_DIR"
 
-          unzip -q "$ZIP_FILE" -d admin-source
-
-          echo "Isi hasil extract:"
-          find admin-source -type f -print
-
-          HTML_FILE=$(find admin-source -type f \
-            \( -iname "*.html" -o -iname "*.htm" \) \
-            | head -n 1)
-
-          if [ -z "$HTML_FILE" ]; then
-            echo "ERROR: File HTML Admin tidak ditemukan di dalam ZIP."
-            exit 1
-          fi
-
-          echo "HTML Admin ditemukan:"
-          echo "$HTML_FILE"
-
-          mkdir -p app-template/src/main/assets
-
-          cp "$HTML_FILE" app-template/src/main/assets/index.html
-
-          echo "HTML berhasil disiapkan."
-
-      # 7. Buat Android Project otomatis
-      - name: Create Android Project
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p app-template/app/src/main/java/com/salearning/admin
-          mkdir -p app-template/app/src/main/res/values
-          mkdir -p app-template/app/src/main/res/mipmap-hdpi
-          mkdir -p app-template/app/src/main/res/mipmap-mdpi
-          mkdir -p app-template/app/src/main/res/mipmap-xhdpi
-          mkdir -p app-template/app/src/main/res/mipmap-xxhdpi
-          mkdir -p app-template/app/src/main/res/mipmap-xxxhdpi
-
-          cat > app-template/settings.gradle <<'EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.name = "SA-Learning-Center-Admin"
-          include(":app")
-          EOF
-
-          cat > app-template/build.gradle <<'EOF'
-          plugins {
-              id 'com.android.application' version '8.6.1' apply false
-          }
-          EOF
-
-          cat > app-template/gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          android.nonTransitiveRClass=true
-          EOF
-
-          cat > app-template/app/build.gradle <<'EOF'
-          plugins {
-              id 'com.android.application'
-          }
-
-          android {
-              namespace 'com.salearning.admin'
-              compileSdk 35
-
-              defaultConfig {
-                  applicationId 'com.salearning.admin'
-                  minSdk 23
-                  targetSdk 35
-                  versionCode 1
-                  versionName '1.0'
-              }
-
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                      shrinkResources false
-                  }
-              }
-
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.7.0'
-              implementation 'androidx.webkit:webkit:1.12.1'
-          }
-          EOF
-
-          cat > app-template/app/src/main/res/values/strings.xml <<'EOF'
-          <resources>
-              <string name="app_name">SA Learning Center Admin</string>
-          </resources>
-          EOF
-
-          cat > app-template/app/src/main/res/values/themes.xml <<'EOF'
-          <resources>
-              <style name="Theme.SALearningAdmin" parent="Theme.AppCompat.Light.NoActionBar">
-                  <item name="android:fontFamily">sans</item>
-                  <item name="android:windowActionModeOverlay">true</item>
-                  <item name="android:colorAccent">#6750A4</item>
-                  <item name="android:navigationBarColor">#000000</item>
-                  <item name="android:statusBarColor">#000000</item>
-              </style>
-          </resources>
-          EOF
-
-          cat > app-template/app/src/main/AndroidManifest.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <uses-permission android:name="android.permission.INTERNET" />
-
-              <application
-                  android:allowBackup="true"
-                  android:hardwareAccelerated="true"
-                  android:label="@string/app_name"
-                  android:theme="@style/Theme.SALearningAdmin"
-                  android:usesCleartextTraffic="true">
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:screenOrientation="portrait">
-
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-
-                  </activity>
-
-              </application>
-
-          </manifest>
-          EOF
-
-          cat > app-template/app/src/main/java/com/salearning/admin/MainActivity.java <<'EOF'
-          package com.salearning.admin;
-
-          import android.annotation.SuppressLint;
-          import android.app.Activity;
-          import android.os.Bundle;
-          import android.webkit.WebChromeClient;
-          import android.webkit.WebResourceRequest;
-          import android.webkit.WebSettings;
-          import android.webkit.WebView;
-          import android.webkit.WebViewClient;
-
-          public class MainActivity extends Activity {
-
-              private WebView webView;
-
-              @SuppressLint("SetJavaScriptEnabled")
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-
-                  webView = new WebView(this);
-                  setContentView(webView);
-
-                  WebSettings settings = webView.getSettings();
-
-                  settings.setJavaScriptEnabled(true);
-                  settings.setDomStorageEnabled(true);
-                  settings.setDatabaseEnabled(true);
-                  settings.setAllowFileAccess(true);
-                  settings.setAllowContentAccess(true);
-                  settings.setJavaScriptCanOpenWindowsAutomatically(true);
-                  settings.setSupportMultipleWindows(false);
-                  settings.setBuiltInZoomControls(false);
-                  settings.setDisplayZoomControls(false);
-                  settings.setLoadWithOverviewMode(false);
-                  settings.setUseWideViewPort(false);
-
-                  webView.setWebViewClient(new WebViewClient() {
-                      @Override
-                      public boolean shouldOverrideUrlLoading(
-                              WebView view,
-                              WebResourceRequest request) {
-                          return false;
-                      }
-                  });
-
-                  webView.setWebChromeClient(new WebChromeClient());
-
-                  webView.loadUrl("file:///android_asset/index.html");
-              }
-
-              @Override
-              public void onBackPressed() {
-                  if (webView != null && webView.canGoBack()) {
-                      webView.goBack();
-                  } else {
-                      super.onBackPressed();
-                  }
-              }
-
-              @Override
-              protected void onDestroy() {
-                  if (webView != null) {
-                      webView.destroy();
-                  }
-                  super.onDestroy();
-              }
-          }
-          EOF
-
-          echo "Android project berhasil dibuat."
-
-      # 8. Build APK
       - name: Build Admin APK
-        working-directory: app-template
-        run: |
-          set -e
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: gradle assembleDebug --stacktrace --no-daemon
 
-          echo "Gradle version:"
-          gradle --version
-
-          echo "Mulai build APK..."
-
-          gradle :app:assembleRelease --no-daemon --stacktrace
-
-          echo "Build selesai."
-
-      # 9. Periksa APK
-      - name: Check APK
-        shell: bash
-        run: |
-          set -e
-
-          echo "Mencari APK..."
-
-          find app-template/app/build/outputs/apk -type f -name "*.apk" -print
-
-          APK_FILE=$(find app-template/app/build/outputs/apk \
-            -type f -name "*.apk" \
-            | head -n 1)
-
-          if [ -z "$APK_FILE" ]; then
-            echo "ERROR: APK tidak berhasil dibuat."
-            exit 1
-          fi
-
-          echo "APK ditemukan:"
-          echo "$APK_FILE"
-
-      # 10. Siapkan nama APK
       - name: Prepare APK
         shell: bash
         run: |
-          set -e
+          APK=$(find "${{ steps.project.outputs.dir }}/app/build/outputs/apk" -type f -name "*.apk" | head -n 1)
 
-          mkdir -p release
+          test -n "$APK"
 
-          APK_FILE=$(find app-template/app/build/outputs/apk \
-            -type f -name "*.apk" \
-            | head -n 1)
+          mkdir -p apk-output
 
-          cp "$APK_FILE" "release/SA_Learning_Center_Admin.apk"
+          cp "$APK" apk-output/SA-Learning-Center-Admin.apk
 
-          ls -lh release/SA_Learning_Center_Admin.apk
-
-      # 11. Upload APK
       - name: Upload Admin APK
         uses: actions/upload-artifact@v4
         with:
           name: SA-Learning-Center-Admin-APK
-          path: release/SA_Learning_Center_Admin.apk
+          path: apk-output/SA-Learning-Center-Admin.apk
           if-no-files-found: error
+          retention-days: 7
