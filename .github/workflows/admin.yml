@@ -27,139 +27,255 @@ jobs:
       - name: Install Android SDK
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Find HTML File
+        id: html
+        shell: bash
+        run: |
+          HTML_FILE=$(find . \
+            -type f \
+            -iname "*.html" \
+            -not -path "./admin-project/*" \
+            -print -quit)
+
+          if [ -z "$HTML_FILE" ]; then
+            echo "File HTML Admin tidak ditemukan."
+            exit 1
+          fi
+
+          echo "HTML ditemukan:"
+          echo "$HTML_FILE"
+
+          echo "file=$HTML_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create Android Project
+        shell: bash
+        run: |
+          rm -rf admin-project
+
+          mkdir -p admin-project/app/src/main/java/com/salearning/admin
+          mkdir -p admin-project/app/src/main/assets
+          mkdir -p admin-project/app/src/main/res/mipmap-hdpi
+          mkdir -p admin-project/app/src/main/res/mipmap-mdpi
+          mkdir -p admin-project/app/src/main/res/mipmap-xhdpi
+          mkdir -p admin-project/app/src/main/res/mipmap-xxhdpi
+          mkdir -p admin-project/app/src/main/res/mipmap-xxxhdpi
+
+          cp "${{ steps.html.outputs.file }}" \
+            admin-project/app/src/main/assets/index.html
+
+          cat > admin-project/settings.gradle <<'EOF'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "SA-Learning-Center-Admin"
+include(":app")
+EOF
+
+          cat > admin-project/build.gradle <<'EOF'
+plugins {
+    id 'com.android.application' version '8.6.1' apply false
+}
+EOF
+
+          cat > admin-project/gradle.properties <<'EOF'
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+EOF
+
+          cat > admin-project/app/build.gradle <<'EOF'
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.salearning.admin'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.salearning.admin'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+
+        debug {
+            minifyEnabled false
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.activity:activity:1.9.3'
+}
+EOF
+
+          cat > admin-project/app/src/main/AndroidManifest.xml <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true"
+        android:label="SA Learning Center Admin"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:screenOrientation="portrait"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
+
+</manifest>
+EOF
+
+          mkdir -p admin-project/app/src/main/res/values
+
+          cat > admin-project/app/src/main/res/values/styles.xml <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="AppTheme"
+        parent="Theme.AppCompat.Light.NoActionBar">
+
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#D71945</item>
+
+    </style>
+
+</resources>
+EOF
+
+          cat > admin-project/app/src/main/java/com/salearning/admin/MainActivity.java <<'EOF'
+package com.salearning.admin;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.os.Bundle;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+
+public class MainActivity extends Activity {
+
+    private WebView webView;
+
+    @SuppressLint("SetJavaScriptEnabled")
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        webView = new WebView(this);
+
+        WebSettings settings = webView.getSettings();
+
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setLoadWithOverviewMode(false);
+        settings.setUseWideViewPort(false);
+
+        webView.setWebViewClient(new WebViewClient());
+        webView.setWebChromeClient(new WebChromeClient());
+
+        setContentView(webView);
+
+        webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    @Override
+    public void onBackPressed() {
+
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+
+        if (webView != null) {
+            webView.destroy();
+        }
+
+        super.onDestroy();
+    }
+}
+EOF
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
 
-      - name: Find Admin ZIP
-        id: zip
-        shell: bash
-        run: |
-          ZIP_FILE=$(find . -type f -iname "*.zip" \
-            -not -path "./admin-project/*" \
-            -print -quit)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "File ZIP Admin Android tidak ditemukan."
-            exit 1
-          fi
-
-          echo "ZIP ditemukan: $ZIP_FILE"
-          echo "zip=$ZIP_FILE" >> "$GITHUB_OUTPUT"
-
-      - name: Extract Admin Android Project
-        run: |
-          rm -rf admin-project
-          mkdir -p admin-project
-
-          unzip -q "${{ steps.zip.outputs.zip }}" -d admin-project
-
-          echo "Isi hasil extract:"
-          find admin-project -maxdepth 4 -type f | head -100
-
-      - name: Find Admin Project
-        id: project
-        shell: bash
-        run: |
-          PROJECT_DIR=""
-
-          # Prioritas 1: settings.gradle / settings.gradle.kts
-          SETTINGS_FILE=$(find admin-project \
-            -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print -quit)
-
-          if [ -n "$SETTINGS_FILE" ]; then
-            PROJECT_DIR=$(dirname "$SETTINGS_FILE")
-          fi
-
-          # Prioritas 2: gradlew
-          if [ -z "$PROJECT_DIR" ]; then
-            GRADLEW_FILE=$(find admin-project \
-              -type f \
-              -name "gradlew" \
-              -print -quit)
-
-            if [ -n "$GRADLEW_FILE" ]; then
-              PROJECT_DIR=$(dirname "$GRADLEW_FILE")
-            fi
-          fi
-
-          # Prioritas 3: build.gradle / build.gradle.kts
-          if [ -z "$PROJECT_DIR" ]; then
-            BUILD_FILE=$(find admin-project \
-              -type f \
-              \( -name "build.gradle" -o -name "build.gradle.kts" \) \
-              -print -quit)
-
-            if [ -n "$BUILD_FILE" ]; then
-              PROJECT_DIR=$(dirname "$BUILD_FILE")
-            fi
-          fi
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Admin Android project tidak ditemukan."
-            echo ""
-            echo "Struktur file yang ditemukan:"
-            find admin-project -maxdepth 5 -type f
-            exit 1
-          fi
-
-          echo "Admin project ditemukan:"
-          echo "$PROJECT_DIR"
-
-          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-      - name: Check Android Project
-        working-directory: ${{ steps.project.outputs.dir }}
-        shell: bash
-        run: |
-          echo "Project directory:"
-          pwd
-
-          echo ""
-          echo "Project files:"
-          find . -maxdepth 3 -type f | sort | head -100
-
       - name: Build Admin APK
-        working-directory: ${{ steps.project.outputs.dir }}
-        shell: bash
+        working-directory: admin-project
         run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace --no-daemon
-          else
-            gradle assembleDebug --stacktrace --no-daemon
-          fi
+          gradle assembleDebug --stacktrace --no-daemon
 
       - name: Prepare APK
         shell: bash
         run: |
-          APK=$(find "${{ steps.project.outputs.dir }}" \
+          APK=$(find admin-project/app/build/outputs/apk \
             -type f \
-            -path "*/build/outputs/apk/*.apk" \
+            -name "*.apk" \
             -print -quit)
 
           if [ -z "$APK" ]; then
-            echo "APK tidak ditemukan setelah proses build."
-            echo ""
-            echo "File APK yang tersedia:"
-            find "${{ steps.project.outputs.dir }}" \
-              -type f \
-              -name "*.apk" \
-              -print
+            echo "APK tidak ditemukan."
             exit 1
           fi
 
-          echo "APK ditemukan: $APK"
+          echo "APK ditemukan:"
+          echo "$APK"
 
-          rm -rf apk-output
           mkdir -p apk-output
 
-          cp "$APK" apk-output/SA-Learning-Center-Admin.apk
+          cp "$APK" \
+            apk-output/SA-Learning-Center-Admin.apk
 
       - name: Upload Admin APK
         uses: actions/upload-artifact@v4
