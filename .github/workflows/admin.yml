@@ -37,7 +37,7 @@ jobs:
       - name: Extract Admin Android Project
         run: |
           mkdir -p admin-project
-          unzip -q SA_Learning_Center_ADMIN_ANDROID_PROJECT_READY.zip -d admin-project
+          unzip -q SA_Learning_Center_ADMIN_ANDROID_PROJECT_SAFE_AREA_FIXED.zip -d admin-project
 
       - name: Find Admin Project
         id: project
@@ -52,13 +52,7 @@ jobs:
 
           echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
           echo "Admin project: $PROJECT_DIR"
-
-      - name: Fix Android Safe Area
-        shell: bash
-        run: |
-          find admin-project -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -print0 |
-          xargs -0 sed -i -E 's/(targetSdk(Target)?[[:space:]]*[=:][[:space:]]*)([0-9]+)/\1 34/g'
-
+          
       - name: Build Admin APK
         working-directory: ${{ steps.project.outputs.dir }}
         run: gradle assembleDebug --stacktrace --no-daemon
