@@ -44,7 +44,7 @@ jobs:
         id: find-android-zip
         shell: bash
         run: |
-          ZIP_FILE="./SA_Learning_Center_ANDROID_PROJECT_GITHUB_READY.zip"
+          ZIP_FILE="./SA_Learning_Center_ANDROID_PROJECT_BACK_FIXED.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: ZIP Android Project tidak ditemukan:"
