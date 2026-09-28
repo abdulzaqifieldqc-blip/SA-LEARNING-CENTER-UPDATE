@@ -25,7 +25,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-         packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -41,17 +41,13 @@ jobs:
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: ZIP Android Project tidak ditemukan:"
             echo "$ZIP_FILE"
-
             echo
             echo "ZIP yang tersedia:"
             find . -type f -name "*.zip" -print
-
             exit 1
           fi
 
-          echo "======================================"
           echo "ANDROID PROJECT ZIP DITEMUKAN"
-          echo "======================================"
           echo "$ZIP_FILE"
 
           echo "android_zip=$ZIP_FILE" >> "$GITHUB_OUTPUT"
@@ -66,10 +62,7 @@ jobs:
             "${{ steps.find-android-zip.outputs.android_zip }}" \
             -d android-project
 
-          echo "======================================"
-          echo "HASIL EXTRACT"
-          echo "======================================"
-
+          echo "HASIL EXTRACT:"
           find android-project -maxdepth 6 -type f -print | sort
 
       - name: Find Android Project
@@ -79,15 +72,12 @@ jobs:
           PROJECT_DIR=""
 
           while IFS= read -r -d '' SETTINGS_FILE; do
-
             CANDIDATE_DIR="$(dirname "$SETTINGS_FILE")"
 
             if [ -f "$CANDIDATE_DIR/app/build.gradle" ] || \
                [ -f "$CANDIDATE_DIR/app/build.gradle.kts" ]; then
-
               PROJECT_DIR="$CANDIDATE_DIR"
               break
-
             fi
 
           done < <(
@@ -99,38 +89,53 @@ jobs:
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android project tidak ditemukan."
-
-            echo
-            echo "Struktur folder:"
-            find android-project \
-              -maxdepth 8 \
-              -print | sort
-
+            find android-project -maxdepth 8 -print | sort
             exit 1
           fi
 
-          echo "======================================"
-          echo "ANDROID PROJECT DITEMUKAN"
-          echo "======================================"
+          echo "ANDROID PROJECT DITEMUKAN:"
           echo "$PROJECT_DIR"
 
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Enable AndroidX
+        shell: bash
+        run: |
+          PROJECT_DIR="${{ steps.find-project.outputs.project_dir }}"
+
+          touch "$PROJECT_DIR/gradle.properties"
+
+          if grep -q '^android.useAndroidX=' "$PROJECT_DIR/gradle.properties"; then
+            sed -i 's/^android.useAndroidX=.*/android.useAndroidX=true/' \
+              "$PROJECT_DIR/gradle.properties"
+          else
+            echo 'android.useAndroidX=true' >> \
+              "$PROJECT_DIR/gradle.properties"
+          fi
+
+          if grep -q '^android.enableJetifier=' "$PROJECT_DIR/gradle.properties"; then
+            sed -i 's/^android.enableJetifier=.*/android.enableJetifier=true/' \
+              "$PROJECT_DIR/gradle.properties"
+          else
+            echo 'android.enableJetifier=true' >> \
+              "$PROJECT_DIR/gradle.properties"
+          fi
+
+          echo "======================================"
+          echo "ANDROIDX CONFIGURATION"
+          echo "======================================"
+
+          cat "$PROJECT_DIR/gradle.properties"
 
       - name: Show Project Structure
         shell: bash
         working-directory: ${{ steps.find-project.outputs.project_dir }}
         run: |
-          echo "======================================"
-          echo "PROJECT STRUCTURE"
-          echo "======================================"
-
+          echo "PROJECT STRUCTURE:"
           find . -maxdepth 6 -type f -print | sort
 
           echo
-          echo "======================================"
-          echo "ROOT PROJECT"
-          echo "======================================"
-
+          echo "ROOT PROJECT:"
           ls -la
 
       - name: Build APK
@@ -157,7 +162,6 @@ jobs:
             -print -quit)"
 
           if [ -z "$APK_PATH" ]; then
-
             echo "ERROR: APK tidak ditemukan."
 
             echo
@@ -167,34 +171,17 @@ jobs:
               -name "*.apk" \
               -print || true
 
-            echo
-            echo "Isi folder build:"
-            find "$PROJECT_DIR/app/build" \
-              -maxdepth 6 \
-              -type f \
-              -print 2>/dev/null || true
-
             exit 1
           fi
 
-          echo "======================================"
-          echo "APK DITEMUKAN"
-          echo "======================================"
-
+          echo "APK DITEMUKAN:"
           echo "$APK_PATH"
 
-          echo
-          echo "Ukuran APK:"
           ls -lh "$APK_PATH"
 
           mkdir -p "$GITHUB_WORKSPACE/apk-output"
 
           cp "$APK_PATH" \
-            "$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
-
-          echo
-          echo "APK FINAL:"
-          ls -lh \
             "$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk"
 
           echo "apk_path=$GITHUB_WORKSPACE/apk-output/SA-Learning-Center.apk" \
@@ -211,7 +198,7 @@ jobs:
           fi
 
           echo "======================================"
-          echo "VERIFIKASI APK BERHASIL"
+          echo "APK BERHASIL DIBUAT"
           echo "======================================"
 
           ls -lh "$APK"
