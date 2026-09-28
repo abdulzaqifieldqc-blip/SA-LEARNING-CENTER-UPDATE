@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -39,6 +40,8 @@ jobs:
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: ZIP tidak ditemukan!"
+            echo ""
+            echo "ZIP yang tersedia:"
             find . -maxdepth 1 -type f -name "*.zip" -print
             exit 1
           fi
@@ -59,38 +62,44 @@ jobs:
             -d android-project
 
           echo "======================================"
-          echo "STRUKTUR PROJECT"
+          echo "PROJECT CONTENT"
           echo "======================================"
 
-          find android-project -maxdepth 6 -type f \
-            \( -name "gradlew" -o -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print
+          find android-project -maxdepth 6 -type f -print
 
-      - name: Find Gradle Project
+      - name: Find Android Project
         id: find-project
         shell: bash
         run: |
-          GRADLEW=$(find android-project \
+          SETTINGS=$(find android-project \
             -type f \
-            -name "gradlew" \
+            -name "settings.gradle" \
             -print \
             -quit)
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew tidak ditemukan!"
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS=$(find android-project \
+              -type f \
+              -name "settings.gradle.kts" \
+              -print \
+              -quit)
+          fi
 
-            echo "Isi ZIP:"
-            find android-project -maxdepth 8 -type f -print
-
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle tidak ditemukan!"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "Gradle wrapper:"
-          echo "$GRADLEW"
+          echo "======================================"
+          echo "ANDROID PROJECT"
+          echo "======================================"
 
-          echo "Project directory:"
+          echo "Settings:"
+          echo "$SETTINGS"
+
+          echo "Project:"
           echo "$PROJECT_DIR"
 
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
@@ -102,15 +111,13 @@ jobs:
 
           touch "$PROJECT_DIR/gradle.properties"
 
-          grep -q "^android.useAndroidX=" \
-            "$PROJECT_DIR/gradle.properties" || \
-            echo "android.useAndroidX=true" >> \
-            "$PROJECT_DIR/gradle.properties"
+          if ! grep -q "^android.useAndroidX=" "$PROJECT_DIR/gradle.properties"; then
+            echo "android.useAndroidX=true" >> "$PROJECT_DIR/gradle.properties"
+          fi
 
-          grep -q "^android.enableJetifier=" \
-            "$PROJECT_DIR/gradle.properties" || \
-            echo "android.enableJetifier=true" >> \
-            "$PROJECT_DIR/gradle.properties"
+          if ! grep -q "^android.enableJetifier=" "$PROJECT_DIR/gradle.properties"; then
+            echo "android.enableJetifier=true" >> "$PROJECT_DIR/gradle.properties"
+          fi
 
           echo "======================================"
           echo "GRADLE PROPERTIES"
@@ -118,20 +125,14 @@ jobs:
 
           cat "$PROJECT_DIR/gradle.properties"
 
-      - name: Check Gradle Wrapper
+      - name: Check Gradle
         shell: bash
         run: |
-          PROJECT_DIR="${{ steps.find-project.outputs.project_dir }}"
-
-          cd "$PROJECT_DIR"
-
-          chmod +x ./gradlew
-
           echo "======================================"
           echo "GRADLE VERSION"
           echo "======================================"
 
-          ./gradlew --version
+          gradle --version
 
       - name: Build APK
         shell: bash
@@ -140,13 +141,11 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          chmod +x ./gradlew
-
           echo "======================================"
-          echo "BUILD APK"
+          echo "BUILD SA LEARNING CENTER APK"
           echo "======================================"
 
-          ./gradlew clean assembleDebug --stacktrace
+          gradle clean assembleDebug --stacktrace
 
       - name: Find APK
         id: find-apk
@@ -161,6 +160,8 @@ jobs:
           if [ -z "$APK" ]; then
             echo "ERROR: app-debug.apk tidak ditemukan!"
 
+            echo ""
+            echo "APK yang tersedia:"
             find "${{ steps.find-project.outputs.project_dir }}" \
               -type f \
               -name "*.apk" \
