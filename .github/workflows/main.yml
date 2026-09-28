@@ -13,30 +13,25 @@ jobs:
 
     steps:
 
-      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Java 17
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      # 4. Setup Gradle 8.9
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      # 5. Find Android Project ZIP
       - name: Find Android Project ZIP
         id: find-android-zip
         shell: bash
@@ -44,10 +39,7 @@ jobs:
           ZIP_FILE="./SA_Learning_Center_ANDROID_PROJECT_BACK_FIXED_ORIGINAL_BASELINE.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP tidak ditemukan:"
-            echo "$ZIP_FILE"
-            echo ""
-            echo "File ZIP yang tersedia:"
+            echo "ERROR: ZIP tidak ditemukan"
             find . -maxdepth 1 -type f -name "*.zip" -print
             exit 1
           fi
@@ -57,41 +49,48 @@ jobs:
 
           echo "zip_file=$ZIP_FILE" >> "$GITHUB_OUTPUT"
 
-      # 6. Extract Android Project
       - name: Extract Android Project
         shell: bash
         run: |
+          rm -rf android-project
           mkdir -p android-project
 
-          unzip -q "${{ steps.find-android-zip.outputs.zip_file }}" \
+          unzip -q \
+            "${{ steps.find-android-zip.outputs.zip_file }}" \
             -d android-project
 
-          echo "Isi hasil extract:"
-          find android-project -maxdepth 3 -type f | head -100
+          echo "Struktur project:"
+          find android-project -maxdepth 5 -type f \
+            -name "gradlew" -o -name "settings.gradle" -o -name "settings.gradle.kts" \
+            -print
 
-      # 7. Find actual Gradle project
-      - name: Find Android Project
+      - name: Find Gradle Project
         id: find-project
         shell: bash
         run: |
-          PROJECT_DIR=$(find android-project \
+          GRADLEW=$(find android-project \
             -type f \
-            -name "settings.gradle*" \
+            -name "gradlew" \
             -print \
-            -quit | xargs -r dirname)
+            -quit)
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: settings.gradle tidak ditemukan."
-            find android-project -maxdepth 5 -type f -print
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew tidak ditemukan!"
+            echo "Isi ZIP:"
+            find android-project -maxdepth 6 -type f -print
             exit 1
           fi
 
-          echo "Android project ditemukan:"
+          PROJECT_DIR=$(dirname "$GRADLEW")
+
+          echo "Gradle wrapper:"
+          echo "$GRADLEW"
+
+          echo "Project directory:"
           echo "$PROJECT_DIR"
 
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
-      # 8. Enable AndroidX
       - name: Enable AndroidX
         shell: bash
         run: |
@@ -110,25 +109,20 @@ jobs:
           echo "gradle.properties:"
           cat "$PROJECT_DIR/gradle.properties"
 
-      # 9. Show project structure
-      - name: Show Project Structure
+      - name: Check Gradle Wrapper
         shell: bash
         run: |
           PROJECT_DIR="${{ steps.find-project.outputs.project_dir }}"
 
-          echo "======================================"
-          echo "ANDROID PROJECT"
-          echo "======================================"
+          cd "$PROJECT_DIR"
 
-          find "$PROJECT_DIR" -maxdepth 4 -type f \
-            \( -name "*.gradle" \
-            -o -name "*.gradle.kts" \
-            -o -name "AndroidManifest.xml" \
-            -o -name "*.java" \
-            -o -name "*.kt" \) \
-            -print
+          chmod +x ./gradlew
 
-      # 10. Build APK
+          echo "Gradle wrapper ditemukan:"
+          ls -lh ./gradlew
+
+          ./gradlew --version
+
       - name: Build APK
         shell: bash
         run: |
@@ -138,9 +132,12 @@ jobs:
 
           chmod +x ./gradlew
 
+          echo "======================================"
+          echo "BUILD APK"
+          echo "======================================"
+
           ./gradlew clean assembleDebug --stacktrace
 
-      # 11. Find APK
       - name: Find APK
         id: find-apk
         shell: bash
@@ -152,41 +149,4 @@ jobs:
             -quit)
 
           if [ -z "$APK" ]; then
-            echo "ERROR: app-debug.apk tidak ditemukan."
-
-            echo "APK yang tersedia:"
-            find "${{ steps.find-project.outputs.project_dir }}" \
-              -type f \
-              -name "*.apk" \
-              -print
-
-            exit 1
-          fi
-
-          echo "APK ditemukan:"
-          ls -lh "$APK"
-
-          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
-
-      # 12. Verify APK
-      - name: Verify APK
-        shell: bash
-        run: |
-          APK="${{ steps.find-apk.outputs.apk_path }}"
-
-          echo "======================================"
-          echo "APK BERHASIL DIBUAT"
-          echo "======================================"
-
-          ls -lh "$APK"
-
-          file "$APK"
-
-      # 13. Upload APK
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SA-Learning-Center-APK-BACK-FIXED
-          path: ${{ steps.find-apk.outputs.apk_path }}
-          if-no-files-found: error
-          retention-days: 30
+           
