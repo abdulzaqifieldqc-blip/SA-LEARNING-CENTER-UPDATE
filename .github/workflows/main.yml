@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -39,7 +38,7 @@ jobs:
           ZIP_FILE="./SA_Learning_Center_ANDROID_PROJECT_BACK_FIXED_ORIGINAL_BASELINE.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP tidak ditemukan"
+            echo "ERROR: ZIP tidak ditemukan!"
             find . -maxdepth 1 -type f -name "*.zip" -print
             exit 1
           fi
@@ -59,9 +58,12 @@ jobs:
             "${{ steps.find-android-zip.outputs.zip_file }}" \
             -d android-project
 
-          echo "Struktur project:"
-          find android-project -maxdepth 5 -type f \
-            -name "gradlew" -o -name "settings.gradle" -o -name "settings.gradle.kts" \
+          echo "======================================"
+          echo "STRUKTUR PROJECT"
+          echo "======================================"
+
+          find android-project -maxdepth 6 -type f \
+            \( -name "gradlew" -o -name "settings.gradle" -o -name "settings.gradle.kts" \) \
             -print
 
       - name: Find Gradle Project
@@ -76,8 +78,10 @@ jobs:
 
           if [ -z "$GRADLEW" ]; then
             echo "ERROR: gradlew tidak ditemukan!"
+
             echo "Isi ZIP:"
-            find android-project -maxdepth 6 -type f -print
+            find android-project -maxdepth 8 -type f -print
+
             exit 1
           fi
 
@@ -98,15 +102,20 @@ jobs:
 
           touch "$PROJECT_DIR/gradle.properties"
 
-          if ! grep -q "^android.useAndroidX=" "$PROJECT_DIR/gradle.properties"; then
-            echo "android.useAndroidX=true" >> "$PROJECT_DIR/gradle.properties"
-          fi
+          grep -q "^android.useAndroidX=" \
+            "$PROJECT_DIR/gradle.properties" || \
+            echo "android.useAndroidX=true" >> \
+            "$PROJECT_DIR/gradle.properties"
 
-          if ! grep -q "^android.enableJetifier=" "$PROJECT_DIR/gradle.properties"; then
-            echo "android.enableJetifier=true" >> "$PROJECT_DIR/gradle.properties"
-          fi
+          grep -q "^android.enableJetifier=" \
+            "$PROJECT_DIR/gradle.properties" || \
+            echo "android.enableJetifier=true" >> \
+            "$PROJECT_DIR/gradle.properties"
 
-          echo "gradle.properties:"
+          echo "======================================"
+          echo "GRADLE PROPERTIES"
+          echo "======================================"
+
           cat "$PROJECT_DIR/gradle.properties"
 
       - name: Check Gradle Wrapper
@@ -118,8 +127,9 @@ jobs:
 
           chmod +x ./gradlew
 
-          echo "Gradle wrapper ditemukan:"
-          ls -lh ./gradlew
+          echo "======================================"
+          echo "GRADLE VERSION"
+          echo "======================================"
 
           ./gradlew --version
 
@@ -149,4 +159,40 @@ jobs:
             -quit)
 
           if [ -z "$APK" ]; then
-           
+            echo "ERROR: app-debug.apk tidak ditemukan!"
+
+            find "${{ steps.find-project.outputs.project_dir }}" \
+              -type f \
+              -name "*.apk" \
+              -print
+
+            exit 1
+          fi
+
+          echo "======================================"
+          echo "APK DITEMUKAN"
+          echo "======================================"
+
+          ls -lh "$APK"
+
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          APK="${{ steps.find-apk.outputs.apk_path }}"
+
+          echo "======================================"
+          echo "APK BERHASIL DIBUAT"
+          echo "======================================"
+
+          ls -lh "$APK"
+          file "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SA-Learning-Center-APK-BACK-FIXED
+          path: ${{ steps.find-apk.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 30
